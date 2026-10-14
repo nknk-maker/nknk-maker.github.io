@@ -1,0 +1,972 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Order Rush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=JetBrains+Mono:wght@500;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* Layout: 全画面3Dトラック + 周囲に半透明HUD。右上に関数グラフ、中央上に制限時間、カーソルが現在の関数 */
+:root {
+  --bg: #120a2e; --panel: rgba(20, 11, 52, .74); --edge: rgba(150, 120, 255, .38);
+  --ink: #f6f3ff; --dim: #a79fd6; --pink: #ff3f9b; --cyan: #2fc7ff; --gold: #ffd23f;
+  --lime: #c6ff3d; --red: #ff4a4a; --violet: #9b6bff;
+  --f-disp: "Dela Gothic One", "Zen Kaku Gothic New", system-ui, sans-serif;
+  --f-body: "Zen Kaku Gothic New", system-ui, -apple-system, "Hiragino Sans", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 500 15px/1.5 var(--f-body); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: var(--bg); }
+#hud { position: fixed; inset: 0; pointer-events: none; padding: 12px 16px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; background: var(--panel); border: 1px solid var(--edge); font-weight: 700; font-size: 13px; letter-spacing: .04em; backdrop-filter: blur(6px); }
+#topL { position: absolute; left: 16px; top: 12px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 42vw; }
+.relic { font-size: 18px; padding: 2px 8px; }
+#topC { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(300px, 38vw); text-align: center; }
+#timerNum { font: 400 34px/1 var(--f-disp); font-variant-numeric: tabular-nums; text-shadow: 0 0 18px rgba(255, 210, 63, .7); }
+#timerNum.low { color: var(--red); animation: pulse .5s infinite alternate; }
+#timerBar { height: 8px; margin-top: 4px; border-radius: 9px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+#timerBar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--gold), var(--pink)); transition: width .12s linear; }
+#gateTag { margin-top: 4px; font: 700 12px var(--f-mono); color: var(--dim); letter-spacing: .12em; }
+#graphPanel { position: absolute; right: 16px; top: 12px; width: min(340px, 44vw); padding: 8px 10px 10px; border-radius: 14px; background: var(--panel); border: 1px solid var(--edge); backdrop-filter: blur(6px); }
+#gpTitle { font: 700 11px var(--f-mono); color: var(--dim); letter-spacing: .1em; display: flex; justify-content: space-between; }
+#graph { width: 100%; height: auto; aspect-ratio: 360/200; display: block; margin-top: 4px; border-radius: 8px; background: rgba(8, 4, 28, .7); }
+#orderBar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); text-align: center; padding: 8px 16px 10px; border-radius: 16px; background: var(--panel); border: 1px solid var(--edge); backdrop-filter: blur(6px); }
+#exprLine { font: 700 clamp(15px, 2.6vw, 24px)/1.25 var(--f-mono); color: var(--lime); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#orderLine { font: 700 12px var(--f-mono); color: var(--dim); margin-top: 2px; letter-spacing: .05em; }
+#orderLine b { color: var(--gold); font-weight: 700; }
+#crowdTag { position: absolute; left: 0; top: 0; font: 400 30px/1 var(--f-disp); text-shadow: 0 0 14px currentColor, 0 3px 0 rgba(0, 0, 0, .5); transform: translate(-50%, -100%); white-space: nowrap; }
+#crowdTag small { font: 700 13px var(--f-body); margin-left: 3px; }
+#bossBar { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); width: min(520px, calc(100% - 32px)); text-align: center; }
+#bossName { font: 400 clamp(16px, 3vw, 24px) var(--f-disp); color: var(--pink); text-shadow: 0 0 14px rgba(255, 63, 155, .8); }
+#bossBar .bar { height: 16px; border-radius: 9px; border: 2px solid #fff; background: rgba(0, 0, 0, .55); overflow: hidden; margin-top: 4px; }
+#bossHp { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--red), var(--gold)); }
+#bossNeed { font: 700 12px var(--f-mono); color: var(--dim); margin-top: 3px; }
+#sprint { position: absolute; right: 16px; bottom: 20px; pointer-events: auto; width: 84px; height: 84px; border-radius: 50%; border: 3px solid var(--gold); background: rgba(255, 210, 63, .16); color: var(--gold); font: 400 14px var(--f-disp); letter-spacing: .04em; touch-action: none; }
+#sprint.on { background: var(--gold); color: #1a0f3d; box-shadow: 0 0 30px var(--gold); }
+#cursorChip { position: fixed; left: 0; top: 0; z-index: 5; pointer-events: none; padding: 5px 12px; border-radius: 10px; background: rgba(10, 5, 30, .85); border: 2px solid var(--lime); color: var(--lime); font: 700 15px var(--f-mono); max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0 18px rgba(198, 255, 61, .45); transform: translate(14px, 14px); }
+#flash { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 6; }
+#popups { position: fixed; inset: 0; pointer-events: none; z-index: 7; overflow: hidden; }
+.pop { position: absolute; left: 50%; top: 40%; transform: translate(-50%, 0); font: 400 clamp(34px, 8vw, 74px)/1 var(--f-disp); white-space: nowrap; text-shadow: 0 0 22px currentColor, 0 4px 0 rgba(0, 0, 0, .55); animation: popup 1.3s cubic-bezier(.2, .9, .3, 1) forwards; }
+@keyframes popup { 0% { transform: translate(-50%, 30px) scale(.4); opacity: 0; } 18% { transform: translate(-50%, 0) scale(1.18); opacity: 1; } 60% { opacity: 1; } 100% { transform: translate(-50%, -90px) scale(1); opacity: 0; } }
+@keyframes pulse { to { transform: scale(1.1); } }
+#overlay { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, rgba(60, 25, 140, .55), rgba(10, 4, 30, .93) 70%); overflow: auto; touch-action: auto; }
+#overlay[hidden] { display: none; }
+.card { width: min(680px, 100%); text-align: center; display: grid; gap: 14px; padding-block: 8px; }
+.logo { font: 400 clamp(44px, 11vw, 92px)/.95 var(--f-disp); letter-spacing: .02em; color: #fff; text-shadow: 0 0 24px var(--pink), 4px 4px 0 var(--pink), -3px -3px 0 var(--cyan); margin: 0; }
+.sub { color: var(--dim); font-weight: 700; margin: 0; }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.modebtn { pointer-events: auto; cursor: pointer; text-align: left; padding: 16px 18px; border-radius: 16px; border: 2px solid var(--cyan); background: rgba(47, 199, 255, .1); color: var(--ink); font: inherit; display: grid; gap: 4px; transition: transform .12s, background .12s; }
+.modebtn:hover, .modebtn:focus-visible { transform: translateY(-3px) scale(1.02); background: rgba(47, 199, 255, .22); outline: none; }
+.modebtn.det { border-color: var(--gold); background: rgba(255, 210, 63, .1); }
+.modebtn.det:hover, .modebtn.det:focus-visible { background: rgba(255, 210, 63, .22); }
+.modebtn b { font: 400 26px/1.1 var(--f-disp); }
+.modebtn span { color: var(--dim); font-size: 13px; }
+.how { text-align: left; font-size: 13.5px; color: #d8d2ff; background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); border-radius: 14px; padding: 12px 16px; margin: 0; padding-left: 34px; }
+.how li + li { margin-top: 3px; }
+.how b { color: var(--gold); }
+.row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; color: var(--dim); font-weight: 700; }
+.seg { pointer-events: auto; cursor: pointer; padding: 6px 14px; border-radius: 99px; border: 1px solid var(--edge); background: transparent; color: var(--ink); font: 700 13px var(--f-mono); }
+.seg[aria-pressed="true"] { background: var(--gold); color: #1a0f3d; border-color: var(--gold); }
+.btn { pointer-events: auto; cursor: pointer; justify-self: center; padding: 12px 30px; border-radius: 14px; border: 0; background: var(--gold); color: #1a0f3d; font: 400 20px var(--f-disp); box-shadow: 0 5px 0 #b88a00; }
+.btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #b88a00; }
+.relics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.relicbtn { cursor: pointer; padding: 16px 12px; border-radius: 16px; border: 2px solid var(--violet); background: rgba(155, 107, 255, .14); color: var(--ink); font: inherit; display: grid; gap: 6px; }
+.relicbtn:hover, .relicbtn:focus-visible { background: rgba(155, 107, 255, .3); transform: translateY(-3px); outline: none; }
+.relicbtn .ic { font-size: 40px; } .relicbtn b { font: 400 18px var(--f-disp); } .relicbtn span { font-size: 13px; color: var(--dim); }
+.big { font: 400 clamp(36px, 8vw, 64px)/1 var(--f-disp); margin: 0; }
+.stat { font: 700 15px var(--f-mono); color: var(--lime); word-break: break-all; }
+@media (max-width: 640px) { #topL { max-width: 28vw; } #topC { width: 34vw; } #timerNum { font-size: 26px; } #graphPanel { top: 82px; width: 46vw; padding: 6px 8px 8px; } #gpT2 { display: none; } #gpTitle { font-size: 10px; } #bossBar { top: 86px; } #orderBar { bottom: 110px; } #sprint { bottom: 24px; } #crowdTag { font-size: 24px; } }
+@media (prefers-reduced-motion: reduce) { .pop { animation-duration: 2s; } }
+</style>
+<canvas id="gl"></canvas>
+<div id="hud" hidden>
+  <div id="topL"><span class="chip" id="modeTag"></span><span class="chip" id="floorTag"></span><span id="relics"></span></div>
+  <div id="topC"><div id="timerNum">0</div><div id="timerBar"><i></i></div><div id="gateTag"></div></div>
+  <div id="graphPanel"><div id="gpTitle"><span id="gpT1"></span><span id="gpT2"></span></div><canvas id="graph" width="360" height="200"></canvas></div>
+  <div id="bossBar" hidden><div id="bossName"></div><div class="bar"><i id="bossHp"></i></div><div id="bossNeed"></div></div>
+  <div id="crowdTag"></div>
+  <div id="orderBar"><div id="exprLine"></div><div id="orderLine"></div></div>
+  <button id="sprint" type="button">SPRINT</button>
+</div>
+<div id="cursorChip" hidden></div>
+<div id="flash"></div>
+<div id="popups"></div>
+<section id="overlay">
+  <div class="card" id="startCard">
+    <h1 class="logo">ORDER<br>RUSH</h1>
+    <p class="sub">群れが関数になる。ゲートを選んで、無限大の向こうまで走れ。</p>
+    <div class="modes">
+      <button class="modebtn" id="goFn" type="button"><b>関数モード</b><span>x → ∞ のオーダーを大きく。ゲートは「f を入れ子にする」関数。</span></button>
+      <button class="modebtn det" id="goDet" type="button"><b>行列式モード</b><span>行列を右から掛けて det を大きく。暗算が武器。</span></button>
+    </div>
+    <div class="row">行列サイズ <button class="seg" id="sz2" type="button" aria-pressed="true">2×2</button><button class="seg" id="sz3" type="button" aria-pressed="false">3×3</button></div>
+    <ol class="how">
+      <li><b>マウス / 指 / ←→キー</b>で群れを左右に動かし、ゲートの左右どちらかを通る。</li>
+      <li><b>SPRINT</b>（Space・Shift・長押し）で加速。制限時間内に全ゲートを抜けろ。</li>
+      <li>最後は<b>ボス戦</b>。威力が足りなければ負け。勝つと遺物を1つ選んで次のフロアへ。</li>
+    </ol>
+    <div class="stat" id="bestLine"></div>
+  </div>
+</section>
+<script>
+/* ================= 巨大数: log域の実数 =================
+ T: 非負の塔数 {k,m}  値 = exp^k(m)   (k=0: m<1e15 の普通の数, k>=1: m in [ln 1e15, 1e15))
+ V: 正の実数 v を ln v = s*t (s=±1, t は T) で保持                         */
+const TT = 1e15, LT = Math.log(TT);
+function mkT(k, m) {
+  if (k === 0) { if (m < TT) return { k: 0, m: m < 0 ? 0 : m }; k = 1; m = Math.log(m); }
+  while (m >= TT) { k++; m = Math.log(m); }
+  while (k >= 1 && m < LT) { k--; m = Math.exp(m); }
+  return { k, m };
+}
+const tCmp = (a, b) => (a.k - b.k) || (a.m - b.m);
+const tExp = a => mkT(a.k + 1, a.m);
+function tLn(a) {
+  if (a.k >= 2) return { s: 1, t: mkT(a.k - 1, a.m) };
+  if (a.k === 1) return { s: 1, t: { k: 0, m: a.m } };
+  if (a.m >= 1) return { s: 1, t: { k: 0, m: Math.log(a.m) } };
+  return { s: -1, t: { k: 0, m: -Math.log(Math.max(a.m, 1e-300)) } };
+}
+function tAdd(a, b) {
+  let h = a, l = b; if (tCmp(a, b) < 0) { h = b; l = a; }
+  if (h.k === 0) return mkT(0, h.m + l.m);
+  if (h.k >= 2) return h;
+  const ll = l.k === 0 ? (l.m > 0 ? Math.log(l.m) : -Infinity) : l.m;
+  return mkT(1, h.m + Math.log1p(Math.exp(ll - h.m)));
+}
+function tSub(a, b) {
+  if (tCmp(a, b) <= 0) return { k: 0, m: 0 };
+  if (a.k === 0) return mkT(0, a.m - b.m);
+  if (a.k >= 2) return a;
+  const lb = b.k === 0 ? (b.m > 0 ? Math.log(b.m) : -Infinity) : b.m;
+  const r = Math.exp(lb - a.m); if (r >= 1) return { k: 0, m: 0 };
+  return mkT(1, a.m + Math.log1p(-r));
+}
+const sVal = S => S.s > 0 ? tExp(S.t) : (S.t.k === 0 ? { k: 0, m: Math.exp(-S.t.m) } : { k: 0, m: 0 });
+function tMul(x, y) {
+  if ((x.k === 0 && x.m === 0) || (y.k === 0 && y.m === 0)) return { k: 0, m: 0 };
+  return sVal(sAdd(tLn(x), tLn(y)));
+}
+function sAdd(x, y) {
+  if (x.s === y.s) return { s: x.s, t: tAdd(x.t, y.t) };
+  const c = tCmp(x.t, y.t); if (c === 0) return { s: 1, t: { k: 0, m: 0 } };
+  return c > 0 ? { s: x.s, t: tSub(x.t, y.t) } : { s: y.s, t: tSub(y.t, x.t) };
+}
+const sNeg = x => ({ s: -x.s, t: x.t });
+/* V の演算 (V は S と同形) */
+function fromNum(c) { const l = Math.log(c); return { s: l >= 0 ? 1 : -1, t: { k: 0, m: Math.abs(l) } }; }
+const ONE = fromNum(1), TWO = fromNum(2), HALFV = fromNum(0.5), EPSV = fromNum(1e-6);
+const LN2V = fromNum(Math.LN2), LN4V = fromNum(Math.log(4));
+const vMul = (a, b) => sAdd(a, b);
+const vInv = a => sNeg(a);
+const vCmp = (a, b) => a.s !== b.s ? a.s - b.s : (a.s > 0 ? tCmp(a.t, b.t) : -tCmp(a.t, b.t));
+function vAdd(a, b) {
+  const h = vCmp(a, b) >= 0 ? a : b, l = h === a ? b : a;
+  const d = sAdd(h, sNeg(l)).t;
+  const add = d.k === 0 ? Math.log1p(Math.exp(-d.m)) : 0;
+  return sAdd(h, { s: 1, t: { k: 0, m: add } });
+}
+function vSub(a, b) {
+  if (vCmp(a, b) <= 0) return EPSV;
+  const d = sAdd(a, sNeg(b)).t;
+  const r = d.k === 0 ? Math.exp(-d.m) : 0;
+  if (r >= 1) return EPSV;
+  return r === 0 ? a : sAdd(a, { s: -1, t: { k: 0, m: -Math.log1p(-r) } });
+}
+const vExp = a => ({ s: 1, t: a.s > 0 ? tExp(a.t) : (a.t.k === 0 ? { k: 0, m: Math.exp(-a.t.m) } : { k: 0, m: 0 }) });
+const vLn = a => a.s > 0 ? tLn(a.t) : EPSV;
+function vPow(a, b) {
+  const bv = b.s > 0 ? tExp(b.t) : (b.t.k === 0 ? { k: 0, m: Math.exp(-b.t.m) } : { k: 0, m: 0 });
+  return { s: a.s, t: tMul(a.t, bv) };
+}
+function toNum(v) { if (v.t.k === 0 && v.t.m < 700) return Math.exp(v.s * v.t.m); return v.s > 0 ? Infinity : 0; }
+/* 威力 sr (単調): 人数・ボス判定に使う */
+function srOf(v) { if (v.s < 0) return 0; const t = v.t; return 8 * (t.k + Math.log10(1 + t.m) / 15); }
+function fmtNum(x) {
+  if (x < 1e5) return x >= 100 ? x.toFixed(0) : x >= 1 ? (+x.toFixed(2)).toString() : x.toPrecision(2);
+  let e = Math.floor(Math.log10(x) + 1e-9), m = x / 10 ** e; if (m >= 9.995) { m /= 10; e++; } return m.toFixed(2) + 'e+' + e;
+}
+function fmtV(v) {
+  if (v.s < 0) return (v.t.k === 0 && v.t.m < 30) ? fmtNum(Math.exp(-v.t.m)) : '≈ 0';
+  const t = v.t;
+  if (t.k === 0) {
+    if (t.m < 11) return fmtNum(Math.exp(t.m));
+    const L = Math.round(t.m / Math.LN10 * 1e9) / 1e9, N = Math.floor(L + 1e-9);
+    return (10 ** (L - N)).toFixed(2) + 'e+' + (N > 1e6 ? N.toExponential(2) : N);
+  }
+  const k = t.k + 1;
+  return k <= 3 ? 'e^'.repeat(k) + t.m.toFixed(1) : 'e↑↑' + k + '·' + t.m.toFixed(1);
+}
+
+/* ================= 関数ツリー ================= */
+const X_ = { t: 'x' }, C = v => ({ t: 'c', v });
+const isC = n => n.t === 'c';
+function Add(a, b) {
+  if (isC(a) && isC(b)) return C(a.v + b.v);
+  if (isC(a) && a.v === 0) return b; if (isC(b) && b.v === 0) return a;
+  return { t: 'add', a, b };
+}
+function Mul(a, b) {
+  if (isC(a) && isC(b)) return C(a.v * b.v);
+  if ((isC(a) && a.v === 0) || (isC(b) && b.v === 0)) return C(0);
+  if (isC(a) && a.v === 1) return b; if (isC(b) && b.v === 1) return a;
+  return { t: 'mul', a, b };
+}
+function Inv(a) { if (a.t === 'inv') return a.a; if (isC(a) && a.v !== 0) return C(1 / a.v); return { t: 'inv', a }; }
+function Pow(a, b) { if (isC(b) && b.v === 1) return a; if (isC(b) && b.v === 0) return C(1); return { t: 'pow', a, b }; }
+const Op = (n, a) => ({ t: 'op', n, a });
+const SubC = (a, v) => isC(a) ? C(Math.max(a.v - v, 0)) : { t: 'subc', a, v };
+const Min = (a, b) => ({ t: 'min', a, b });
+
+function mapTree(n, fn) { // 共有を保つ再構築
+  const memo = new Map();
+  const go = u => {
+    if (memo.has(u)) return memo.get(u);
+    let r = fn(u, go);
+    memo.set(u, r); return r;
+  };
+  return go(n);
+}
+function compose(f, g) { // f(g(x))
+  return mapTree(f, (u, go) => {
+    switch (u.t) {
+      case 'x': return g;
+      case 'c': return u;
+      case 'add': return Add(go(u.a), go(u.b));
+      case 'mul': return Mul(go(u.a), go(u.b));
+      case 'pow': return Pow(go(u.a), go(u.b));
+      case 'op': return Op(u.n, go(u.a));
+      case 'inv': return Inv(go(u.a));
+      case 'subc': return SubC(go(u.a), u.v);
+      case 'min': return Min(go(u.a), go(u.b));
+    }
+  });
+}
+function treeSize(n) { const s = new Set(); (function w(u) { if (s.has(u)) return; s.add(u); if (u.a) w(u.a); if (u.b) w(u.b); })(n); return s.size; }
+
+/* 導関数 (符号は無視した |f'| で扱う) */
+const DOP = {
+  exp: u => Op('exp', u), ln: u => Inv(u), exp2: u => Mul(C(Math.LN2), Op('exp2', u)),
+  sq: u => Mul(C(2), u), sqrt: u => Inv(Mul(C(2), Op('sqrt', u))),
+  gamma: u => Mul(Op('gamma', u), Op('psi', u)), fact: u => Mul(Op('fact', u), Op('psi', Add(u, C(1)))),
+  zeta: u => Op('dzeta', u), dzeta: u => Mul(C(Math.LN2), Op('dzeta', u)),
+  pi: u => Inv(Op('ln', u)), pn: u => Add(Op('ln', u), C(1)), psi: u => Inv(u),
+  binv: u => Mul(Op('binv', u), Add(C(Math.log(4)), Inv(Mul(C(2), u))))
+};
+function D(n) {
+  const memo = new Map();
+  const go = u => {
+    if (memo.has(u)) return memo.get(u);
+    let r;
+    switch (u.t) {
+      case 'x': r = C(1); break;
+      case 'c': r = C(0); break;
+      case 'add': r = Add(go(u.a), go(u.b)); break;
+      case 'mul': r = Add(Mul(go(u.a), u.b), Mul(u.a, go(u.b))); break;
+      case 'pow': r = Mul(u, Add(Mul(go(u.b), Op('ln', u.a)), Mul(u.b, Mul(go(u.a), Inv(u.a))))); break;
+      case 'op': r = Mul(DOP[u.n](u.a), go(u.a)); break;
+      case 'inv': r = Mul(go(u.a), Inv(Mul(u.a, u.a))); break;
+      case 'subc': r = go(u.a); break;
+      case 'min': r = go(u.a); break;
+    }
+    memo.set(u, r); return r;
+  };
+  return go(n);
+}
+/* 積分 ≈ f · min(x, f/f')  (ラプラス型の見積もり) */
+function Integ(f) { return Mul(f, Min(X_, Mul(f, Inv(D(f))))); }
+
+/* ---- V での評価 ---- */
+function gammaN(z) {
+  if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gammaN(1 - z));
+  z -= 1; const g = 7, c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  let x = c[0]; for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+  const t = z + g + 0.5; return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+}
+function zetaN(s) {
+  if (s <= 1.0001) return 1e4; if (s > 60) return 1;
+  let sum = 0; const N = 40;
+  for (let n = 1; n < N; n++) sum += Math.pow(n, -s);
+  return sum + Math.pow(N, 1 - s) / (s - 1) + 0.5 * Math.pow(N, -s);
+}
+function opV(n, u) {
+  const small = u.s > 0 && u.t.k === 0 && u.t.m < 4.9;   // u < ~134
+  switch (n) {
+    case 'exp': return vExp(u);
+    case 'ln': return vLn(u);
+    case 'exp2': return vExp(vMul(u, LN2V));
+    case 'sq': return vMul(u, u);
+    case 'sqrt': return vPow(u, HALFV);
+    case 'gamma': case 'fact': {
+      const w = n === 'fact' ? vAdd(u, ONE) : u;
+      if (w.s < 0 || (w.t.k === 0 && w.t.m < 4.9)) { const z = toNum(w); return fromNum(Math.max(gammaN(z), 1e-9)); }
+      return vExp(vMul(w, vSub(vLn(w), ONE)));
+    }
+    case 'zeta': return (u.s > 0 && u.t.k === 0 && u.t.m < 4.1) || u.s < 0 ? fromNum(zetaN(toNum(u))) : ONE;
+    case 'pi': return small && toNum(u) < 3 ? ONE : vMul(u, sNeg(vLn(u)));
+    case 'pn': return small && toNum(u) < 3 ? TWO : vMul(u, vLn(u));
+    case 'psi': return small && toNum(u) < 3 ? HALFV : vLn(u);
+    case 'binv': return vMul(vExp(vMul(u, LN4V)), vMul(vPow(u, HALFV), fromNum(0.2821)));
+    case 'dzeta': return vMul(fromNum(0.693), vInv(vExp(vMul(u, LN2V))));
+  }
+  return u;
+}
+function evalV(root, x) {
+  const memo = new Map();
+  const go = n => {
+    if (memo.has(n)) return memo.get(n);
+    let r;
+    switch (n.t) {
+      case 'x': r = x; break;
+      case 'c': r = fromNum(n.v > 0 ? n.v : 1e-300); break;
+      case 'add': r = vAdd(go(n.a), go(n.b)); break;
+      case 'mul': r = vMul(go(n.a), go(n.b)); break;
+      case 'pow': r = vPow(go(n.a), go(n.b)); break;
+      case 'op': r = opV(n.n, go(n.a)); break;
+      case 'inv': r = vInv(go(n.a)); break;
+      case 'subc': { const a = go(n.a); r = vSub(a, fromNum(n.v)); break; }
+      case 'min': { const a = go(n.a), b = go(n.b); r = vCmp(a, b) <= 0 ? a : b; break; }
+    }
+    memo.set(n, r); return r;
+  };
+  return go(root);
+}
+/* ---- 普通の数での評価 (グラフ用) ---- */
+function opN(n, u) {
+  switch (n) {
+    case 'exp': return Math.exp(u); case 'ln': return Math.log(Math.abs(u) + 1e-12);
+    case 'exp2': return Math.pow(2, u); case 'sq': return u * u; case 'sqrt': return Math.sqrt(Math.abs(u));
+    case 'gamma': return u > 171 ? Infinity : gammaN(u); case 'fact': return u > 170 ? Infinity : gammaN(u + 1);
+    case 'zeta': return zetaN(u);
+    case 'pi': return u < 2 ? 0 : u / Math.log(u) * (1 + 1 / Math.log(u));
+    case 'pn': return u < 6 ? 2 + u : u * (Math.log(u) + Math.log(Math.log(u)) - 1);
+    case 'psi': return u > 0.5 ? Math.log(u) - 1 / (2 * u) : -1;
+    case 'binv': return u > 85 ? Infinity : gammaN(2 * u) / (gammaN(u) * gammaN(u));
+    case 'dzeta': { if (u <= 1.05) return 1e3; let s = 0; for (let k = 2; k < 60; k++) s += Math.log(k) * Math.pow(k, -u); return s; }
+  }
+  return u;
+}
+function evalN(root, x) {
+  const memo = new Map();
+  const go = n => {
+    if (memo.has(n)) return memo.get(n);
+    let r;
+    switch (n.t) {
+      case 'x': r = x; break; case 'c': r = n.v; break;
+      case 'add': r = go(n.a) + go(n.b); break; case 'mul': r = go(n.a) * go(n.b); break;
+      case 'pow': r = Math.pow(Math.abs(go(n.a)), go(n.b)); break;
+      case 'op': r = opN(n.n, go(n.a)); break; case 'inv': r = 1 / go(n.a); break;
+      case 'subc': r = go(n.a) - n.v; break; case 'min': r = Math.min(go(n.a), go(n.b)); break;
+    }
+    memo.set(n, r); return r;
+  };
+  return go(root);
+}
+/* ---- 表示 ---- */
+function showT(n, p = 0) {
+  const par = (s, q) => q < p ? '(' + s + ')' : s;
+  switch (n.t) {
+    case 'x': return 'x';
+    case 'c': return Number.isInteger(n.v) ? String(n.v) : (+n.v.toPrecision(3)).toString();
+    case 'add': return par(showT(n.a, 1) + ' + ' + showT(n.b, 1), 1);
+    case 'mul': return par(showT(n.a, 2) + '·' + showT(n.b, 2), 2);
+    case 'pow': return par(showT(n.a, 4) + '^' + showT(n.b, 4), 3);
+    case 'inv': return '1/' + showT(n.a, 4);
+    case 'subc': return par(showT(n.a, 1) + ' − ' + n.v, 1);
+    case 'min': return 'min(' + showT(n.a) + ', ' + showT(n.b) + ')';
+    case 'op': {
+      const u = showT(n.a);
+      switch (n.n) {
+        case 'exp': return 'e^(' + u + ')'; case 'ln': return 'ln(' + u + ')'; case 'exp2': return '2^(' + u + ')';
+        case 'sq': return '(' + u + ')²'; case 'sqrt': return '√(' + u + ')';
+        case 'gamma': return 'Γ(' + u + ')'; case 'fact': return '(' + u + ')!';
+        case 'zeta': return 'ζ(' + u + ')'; case 'pi': return 'π(' + u + ')'; case 'pn': return 'p(' + u + ')';
+        case 'psi': return 'ψ(' + u + ')'; case 'dzeta': return 'ζ′(' + u + ')'; case 'binv': return '1/B(' + u + ',' + u + ')';
+      }
+    }
+  }
+  return '?';
+}
+
+/* ================= 関数モードのゲート ================= */
+const FN_POOL = [
+  { l: 'f + 7', cap: '定数を足す', w: [4, 2, 1], f: t => Add(t, C(7)) },
+  { l: 'f − 12', cap: '定数を引く', w: [3, 2, 1], f: t => SubC(t, 12) },
+  { l: 'f × 3', cap: '定数倍', w: [4, 2, 1], f: t => Mul(t, C(3)) },
+  { l: 'f ÷ 4', cap: '定数で割る', w: [3, 2, 1], f: t => Mul(t, C(0.25)) },
+  { l: 'f + x', cap: 'x を足す', w: [4, 2, 1], f: t => Add(t, X_) },
+  { l: 'f × x', cap: 'x を掛ける', w: [4, 3, 2], f: t => Mul(t, X_) },
+  { l: 'f ²', cap: '2乗', w: [4, 3, 2], f: t => Op('sq', t) },
+  { l: '√f', cap: '平方根', w: [3, 2, 1], f: t => Op('sqrt', t) },
+  { l: 'ln f', cap: '自然対数', w: [3, 3, 2], f: t => Op('ln', t) },
+  { l: 'ln ln f', cap: '二重対数', w: [1, 2, 2], f: t => Op('ln', Op('ln', t)) },
+  { l: 'e ^ f', cap: '指数関数', w: [3, 4, 4], f: t => Op('exp', t) },
+  { l: '2 ^ f', cap: '指数関数 (底2)', w: [3, 3, 3], f: t => Op('exp2', t) },
+  { l: 'x ^ f', cap: 'x の f 乗', w: [2, 3, 3], f: t => Pow(X_, t) },
+  { l: 'f ^ x', cap: 'f の x 乗', w: [2, 3, 3], f: t => Pow(t, X_) },
+  { l: 'f ^ f', cap: '自己冪', w: [1, 3, 4], f: t => Pow(t, t) },
+  { l: 'f ( f )', cap: '自分自身を入れ子に', w: [1, 3, 4], f: t => compose(t, t) },
+  { l: 'Γ ( f )', cap: 'ガンマ関数', w: [1, 3, 4], f: t => Op('gamma', t) },
+  { l: 'f !', cap: '階乗', w: [1, 3, 3], f: t => Op('fact', t) },
+  { l: 'ζ ( f )', cap: 'ゼータ関数', w: [2, 3, 3], f: t => Op('zeta', t) },
+  { l: 'π ( f )', cap: '素数計数関数', w: [1, 3, 3], f: t => Op('pi', t) },
+  { l: 'p ( f )', cap: 'f 番目の素数', w: [1, 3, 3], f: t => Op('pn', t) },
+  { l: '1 / B(f, f)', cap: 'ベータ関数の逆数', w: [1, 3, 3], f: t => Op('binv', t) },
+  { l: 'd f / d x', cap: '微分', w: [1, 2, 2], f: t => D(t) },
+  { l: '∫ f dx', cap: '積分', w: [1, 2, 2], f: t => Integ(t) },
+];
+const XBIG = fromNum(1e30);       // 「無限大」の代わりに x = 10^30 で評価
+function fnStart() { const tree = X_; return { kind: 'fn', tree, v: evalV(tree, XBIG) }; }
+function fnApply(st, g) {
+  let tree = g.f(st.tree);
+  if (treeSize(tree) > 700) tree = st.tree;
+  return { kind: 'fn', tree, v: evalV(tree, XBIG) };
+}
+const fnSr = st => srOf(st.v);
+function pickWeighted(pool, tierIdx, exclude) {
+  const arr = pool.filter(g => g !== exclude); let tot = 0; arr.forEach(g => tot += g.w[tierIdx]);
+  let r = Math.random() * tot; for (const g of arr) { r -= g.w[tierIdx]; if (r <= 0) return g; } return arr[0];
+}
+function fnGatePair(floor) {
+  const ti = Math.min(floor, 2); const a = pickWeighted(FN_POOL, ti), b = pickWeighted(FN_POOL, ti, a);
+  return [{ kind: 'fn', ...a }, { kind: 'fn', ...b }];
+}
+
+/* ================= 行列式モード ================= */
+function matIdent(n) { return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? 1n : 0n)); }
+function matMul(A, B) { const n = A.length; return A.map((r, i) => r.map((_, j) => { let s = 0n; for (let k = 0; k < n; k++) s += A[i][k] * B[k][j]; return s; })); }
+function matDet(M) {
+  if (M.length === 2) return M[0][0] * M[1][1] - M[0][1] * M[1][0];
+  const [[a, b, c], [d, e, f], [g, h, i]] = M;
+  return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+}
+function fmtBig(b) {
+  const neg = b < 0n, s = (neg ? -b : b).toString();
+  if (s.length <= 9) return (neg ? '−' : '') + s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (neg ? '−' : '') + s[0] + '.' + s.slice(1, 4) + 'e+' + (s.length - 1);
+}
+function log10Big(b) { const s = (b < 0n ? -b : b).toString(); if (s === '0') return -Infinity; if (s.length < 15) return Math.log10(+s); return s.length - 1 + Math.log10(+('0.' + s.slice(0, 15)) * 10); }
+function detStart(n) { const M = matIdent(n); return { kind: 'det', n, M, det: 1n }; }
+function detApply(st, g) { const M = matMul(st.M, g.mat); return { kind: 'det', n: st.n, M, det: matDet(M) }; }
+const detSr = st => st.det > 0n ? 1.6 * Math.max(0, log10Big(st.det)) : 0;
+function detGatePair(n, floor) {
+  const rnd = () => Math.floor(Math.random() * 19) - 9;
+  const mk = () => { let mat; do { mat = Array.from({ length: n }, () => Array.from({ length: n }, () => BigInt(rnd()))); } while (matDet(mat) === 0n && Math.random() < 0.85); return { kind: 'det', mat, d: matDet(mat) }; };
+  const a = mk(); let b = mk(); while (b.d === a.d) b = mk(); return [a, b];
+}
+/* ================= ボス強度 (最適経路から決定) ================= */
+function bestFnSr(gates, start) {
+  let beam = [start];
+  for (const pair of gates) {
+    const nx = [];
+    for (const st of beam) for (const g of pair) nx.push(fnApply(st, g));
+    nx.sort((a, b) => vCmp(b.v, a.v)); beam = nx.slice(0, 6);
+  }
+  return fnSr(beam[0]);
+}
+function bestDetSr(gates, d0 = 1n) {
+  let P = d0 > 0n ? log10Big(d0) : -Infinity, N = d0 < 0n ? log10Big(d0) : -Infinity;   // 正/負の det の最大 log10 |det|
+  for (const pair of gates) {
+    let nP = -Infinity, nN = -Infinity;
+    for (const g of pair) {
+      if (g.d === 0n) { nP = Math.max(nP, -Infinity); continue; }
+      const l = log10Big(g.d);
+      if (g.d > 0n) { nP = Math.max(nP, P + l); nN = Math.max(nN, N + l); }
+      else { nP = Math.max(nP, N + l); nN = Math.max(nN, P + l); }
+    }
+    P = nP; N = nN; if (P === -Infinity && N === -Infinity) { P = 0; }
+  }
+  return 1.6 * Math.max(P, 0);
+}
+/* ================= Three.js シーン ================= */
+const $ = id => document.getElementById(id);
+const glCanvas = $('gl');
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x120a2e);
+scene.fog = new THREE.Fog(0x120a2e, 60, 190);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 400);
+scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x2a1760, 1.0));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9); sun.position.set(-6, 14, 8); scene.add(sun);
+
+const ROAD_W = 14, HALF = ROAD_W / 2;
+let trackGroup = new THREE.Group(); scene.add(trackGroup);
+const dummy = new THREE.Object3D();
+
+function gridTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = '#1b1452'; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(90,220,255,.55)'; g.lineWidth = 3; g.strokeRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(255,90,170,.18)'; g.lineWidth = 2; g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t;
+}
+const GRID_TEX = gridTexture();
+
+/* ---- 星空・遠景 ---- */
+(function () {
+  const n = 700, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, r = 120 + Math.random() * 60;
+    pos.set([Math.cos(a) * r, 8 + Math.random() * 90, -Math.abs(Math.sin(a)) * r - 40], i * 3);
+    const c = new THREE.Color().setHSL(Math.random(), 0.8, 0.75); col.set([c.r, c.g, c.b], i * 3);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const stars = new THREE.Points(g, new THREE.PointsMaterial({ size: 1.6, vertexColors: true, fog: false, sizeAttenuation: false }));
+  stars.name = 'stars'; scene.add(stars);
+})();
+
+/* ---- トラック構築: floorLen = ボス地点の距離 ---- */
+let sideMats = [];
+function buildTrack(len) {
+  scene.remove(trackGroup); trackGroup = new THREE.Group(); scene.add(trackGroup);
+  const total = len + 140;
+  const tex = GRID_TEX.clone(); tex.needsUpdate = true; tex.repeat.set(ROAD_W / 4, total / 4);
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, total), new THREE.MeshBasicMaterial({ map: tex }));
+  road.rotation.x = -Math.PI / 2; road.position.set(0, 0, -total / 2 + 30); trackGroup.add(road);
+  // 光るレール
+  sideMats = [];
+  [-1, 1].forEach(sd => {
+    const m = new THREE.MeshBasicMaterial({ color: sd < 0 ? 0xff4fa3 : 0x3dd6ff });
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, total), m); rail.position.set(sd * (HALF + 0.25), 0.3, -total / 2 + 30);
+    trackGroup.add(rail); sideMats.push(m);
+  });
+  // 柱 (流れる景色)
+  const count = Math.floor(total / 10) * 2;
+  const geo = new THREE.BoxGeometry(1.2, 1, 1.2), mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const pil = new THREE.InstancedMesh(geo, mat, count); let i = 0;
+  for (let z = 20; z > -total + 30; z -= 10) {
+    [-1, 1].forEach(sd => {
+      const h = 3 + Math.random() * 16; dummy.position.set(sd * (HALF + 4 + Math.random() * 6), h / 2, z + Math.random() * 3); dummy.scale.set(1 + Math.random(), h, 1 + Math.random()); dummy.rotation.set(0, 0, 0); dummy.updateMatrix();
+      pil.setMatrixAt(i, dummy.matrix); pil.setColorAt(i, new THREE.Color().setHSL(0.55 + Math.random() * 0.4, 0.8, 0.45)); i++;
+    });
+  }
+  pil.count = i; trackGroup.add(pil);
+}
+
+/* ================= 群衆 (InstancedMesh + 歩行アニメ) ================= */
+const MAXC = 160;
+const partDefs = [
+  { g: new THREE.BoxGeometry(0.5, 0.62, 0.3), y: 1.15 },    // 胴
+  { g: new THREE.SphereGeometry(0.27, 10, 8), y: 1.7 },      // 頭
+  { g: new THREE.BoxGeometry(0.18, 0.62, 0.2), y: 0.55, lx: -0.13 }, // 脚L
+  { g: new THREE.BoxGeometry(0.18, 0.62, 0.2), y: 0.55, lx: 0.13 },  // 脚R
+  { g: new THREE.BoxGeometry(0.14, 0.55, 0.16), y: 1.25, lx: -0.34 },// 腕L
+  { g: new THREE.BoxGeometry(0.14, 0.55, 0.16), y: 1.25, lx: 0.34 }  // 腕R
+];
+const crowdMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const crowdMeshes = partDefs.map(p => { const m = new THREE.InstancedMesh(p.g, crowdMat, MAXC); m.frustumCulled = false; m.count = MAXC; scene.add(m); return m; });
+const people = Array.from({ length: MAXC }, (_, i) => ({ x: 0, z: 0, ph: Math.random() * 6.28, sc: 0, tx: 0, tz: 0, jit: Math.random() }));
+const crowdColor = new THREE.Color(0xc6ff3d), tmpC = new THREE.Color();
+const crowd = { x: 0, z: 0, n: 12, target: 12, mode: 0, speedK: 1, hit: 0 };
+function layoutTargets(n) {
+  const gold = 2.399963;
+  for (let i = 0; i < MAXC; i++) {
+    const r = 0.52 * Math.sqrt(i + 0.5), a = i * gold;
+    people[i].tx = Math.cos(a) * r; people[i].tz = Math.sin(a) * r * 1.15;
+  }
+}
+layoutTargets();
+function setCrowdColor(hex) { crowdColor.setHex(hex); }
+function updateCrowd(dt, t, moving) {
+  const n = Math.round(crowd.n);
+  for (let i = 0; i < MAXC; i++) {
+    const p = people[i];
+    const want = i < n ? 1 : 0;
+    p.sc += (want - p.sc) * Math.min(1, dt * 9);
+    p.x += (crowd.x + p.tx - p.x) * Math.min(1, dt * (7 + p.jit * 6));
+    p.z += (crowd.z + p.tz - p.z) * Math.min(1, dt * (7 + p.jit * 6));
+    const sc = p.sc < 0.02 ? 0.0001 : p.sc;
+    const sw = moving ? Math.sin(t * 13 * crowd.speedK + p.ph) : Math.sin(t * 2 + p.ph) * 0.15;
+    const bob = moving ? Math.abs(Math.cos(t * 13 * crowd.speedK + p.ph)) * 0.12 : 0;
+    for (let k = 0; k < 6; k++) {
+      const d = partDefs[k]; dummy.rotation.set(0, 0, 0);
+      dummy.position.set(p.x + (d.lx || 0) * sc, (d.y + bob) * sc, p.z);
+      if (k === 2 || k === 3 || k === 4 || k === 5) {
+        const dir = (k === 2 || k === 5) ? 1 : -1, ang = sw * 0.75 * dir;
+        dummy.rotation.x = ang;
+        if (k >= 4) dummy.position.y = (d.y + bob + 0.27) * sc;
+        dummy.position.y -= (k >= 4 ? 0.27 : 0.3) * sc * (1 - Math.cos(ang)); dummy.position.z = p.z - Math.sin(ang) * (k >= 4 ? 0.2 : 0.25) * sc;
+      }
+      dummy.scale.setScalar(sc); dummy.updateMatrix(); crowdMeshes[k].setMatrixAt(i, dummy.matrix);
+      if (k === 0 || k === 1) { tmpC.copy(crowdColor).offsetHSL(0, 0, (p.jit - 0.5) * 0.12); crowdMeshes[k].setColorAt(i, k === 1 ? tmpC.clone().offsetHSL(0, 0, 0.12) : tmpC); }
+      else if (k >= 4) crowdMeshes[k].setColorAt(i, crowdColor); else crowdMeshes[k].setColorAt(i, tmpC.copy(crowdColor).multiplyScalar(0.55));
+    }
+  }
+  crowdMeshes.forEach(m => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+}
+
+/* ================= ゲート ================= */
+let gateObjs = [];
+function makeGateTexture(g, col, mode) {
+  const W = 512, H = 400, c = document.createElement('canvas'); c.width = W; c.height = H; const x = c.getContext('2d');
+  const grd = x.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, col + 'f0'); grd.addColorStop(1, col + '70');
+  x.fillStyle = grd; x.fillRect(0, 0, W, H);
+  x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineWidth = 10; x.strokeRect(5, 5, W - 10, H - 10);
+  x.fillStyle = 'rgba(255,255,255,.10)'; for (let i = 0; i < 9; i++) x.fillRect(0, 20 + i * 44, W, 14);
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.shadowColor = 'rgba(0,0,0,.55)'; x.shadowBlur = 14;
+  if (mode === 'fn') {
+    const lab = g.l; let fs = lab.length > 9 ? 78 : lab.length > 6 ? 98 : 124;
+    x.font = `${fs}px "Dela Gothic One","Zen Kaku Gothic New",sans-serif`; x.fillText(lab, W / 2, H * 0.44);
+    x.shadowBlur = 0; x.font = '600 34px "Zen Kaku Gothic New",sans-serif'; x.fillStyle = 'rgba(255,255,255,.85)'; x.fillText(g.cap, W / 2, H * 0.80);
+  } else {
+    const n = g.mat.length, cell = n === 2 ? 108 : 82, fs = n === 2 ? 76 : 56, ox = W / 2 - (n * cell) / 2, oy = H / 2 - (n * cell) / 2 * 0.9 + 6;
+    x.font = `${fs}px "JetBrains Mono","Dela Gothic One",monospace`; x.shadowBlur = 8;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) x.fillText(String(g.mat[i][j]).replace('-', '−'), ox + cell * (j + 0.5), oy + cell * (i + 0.5) * 0.92 + 8);
+    x.lineWidth = 10; x.strokeStyle = '#fff'; x.shadowBlur = 0; const bx = ox - 14, bx2 = ox + n * cell + 14, by = oy - 8, by2 = oy + n * cell * 0.92 + 14;
+    x.beginPath(); x.moveTo(bx + 22, by); x.lineTo(bx, by); x.lineTo(bx, by2); x.lineTo(bx + 22, by2); x.moveTo(bx2 - 22, by); x.lineTo(bx2, by); x.lineTo(bx2, by2); x.lineTo(bx2 - 22, by2); x.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+}
+function clearGates() { gateObjs.forEach(o => { scene.remove(o.group); o.group.traverse(m => { if (m.material) { if (m.material.map) m.material.map.dispose(); m.material.dispose(); } if (m.geometry) m.geometry.dispose(); }); }); gateObjs = []; }
+function spawnGate(z, pair, mode) {
+  const group = new THREE.Group(); const sides = [];
+  pair.forEach((g, i) => {
+    const sd = i === 0 ? -1 : 1, col = sd < 0 ? '#ff3f9b' : '#2fc7ff', cx = sd * HALF / 2;
+    const mat = new THREE.MeshBasicMaterial({ map: makeGateTexture(g, col, mode), transparent: true, opacity: 0.96, side: THREE.DoubleSide });
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(HALF - 0.4, (HALF - 0.4) * 400 / 512 * 1.15), mat); panel.position.set(cx, 4.6, 0); group.add(panel);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9, 0.35), new THREE.MeshBasicMaterial({ color: sd < 0 ? 0xff4fa3 : 0x3dd6ff })); post.position.set(sd * HALF - sd * 0.18, 4.5, 0); group.add(post);
+    const eye = new THREE.Sprite(new THREE.SpriteMaterial({ map: makeEyeTex('?'), transparent: true, depthTest: false })); eye.scale.set(2.4, 2.4, 1); eye.position.set(cx, 9.1, 0.2); eye.visible = false; group.add(eye);
+    sides.push({ panel, eye, mat });
+  });
+  const mid = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9.5, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff })); mid.position.set(0, 4.75, 0); group.add(mid);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(ROAD_W, 0.3, 0.3), new THREE.MeshBasicMaterial({ color: 0xffffff })); bar.position.set(0, 9.4, 0); group.add(bar);
+  group.position.z = z; scene.add(group);
+  const o = { z, pair, group, sides, done: false, chosen: -1 }; gateObjs.push(o); return o;
+}
+function makeEyeTex(sym) {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  const col = sym === '▲' ? '#7dff6b' : sym === '▼' ? '#ff4a4a' : '#ffd23f';
+  x.fillStyle = 'rgba(10,6,30,.85)'; x.beginPath(); x.arc(64, 64, 58, 0, 7); x.fill(); x.lineWidth = 8; x.strokeStyle = col; x.stroke();
+  x.fillStyle = col; x.font = '700 64px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(sym === '＝' ? '＝' : sym, 64, 70);
+  return new THREE.CanvasTexture(c);
+}
+function setEye(side, sym) { if (side.eye.material.map) side.eye.material.map.dispose(); side.eye.material.map = makeEyeTex(sym); side.eye.material.needsUpdate = true; side.eye.visible = true; }
+
+/* ================= ボス ================= */
+let boss = null;
+function buildBoss(z, name, colHex) {
+  if (boss) { scene.remove(boss.group); }
+  const group = new THREE.Group(); group.position.set(0, 0, z);
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 1), new THREE.MeshLambertMaterial({ color: colHex, emissive: colHex, emissiveIntensity: 0.55, flatShading: true })); core.position.y = 9; group.add(core);
+  const spikes = new THREE.Mesh(new THREE.IcosahedronGeometry(8.4, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true })); spikes.position.y = 9; group.add(spikes);
+  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(11, 0.35, 8, 64), new THREE.MeshBasicMaterial({ color: 0xffd23f })); ring1.position.y = 9; group.add(ring1);
+  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(13.5, 0.25, 8, 64), new THREE.MeshBasicMaterial({ color: 0xff3f9b })); ring2.position.y = 9; ring2.rotation.x = 1.2; group.add(ring2);
+  [-1, 1].forEach(sd => { const e = new THREE.Mesh(new THREE.SphereGeometry(1.1, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff })); e.position.set(sd * 2.2, 10.2, 5.4); group.add(e); const p = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0x120a2e })); p.position.set(sd * 2.2, 10.2, 6.3); group.add(p); });
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(5, 0.7, 0.6), new THREE.MeshBasicMaterial({ color: 0x120a2e })); mouth.position.set(0, 6.8, 5.8); group.add(mouth);
+  const arena = new THREE.Mesh(new THREE.RingGeometry(14, 16, 48), new THREE.MeshBasicMaterial({ color: colHex, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })); arena.rotation.x = -Math.PI / 2; arena.position.y = 0.05; group.add(arena);
+  scene.add(group); boss = { group, core, spikes, ring1, ring2, mouth, z, hp: 1, shake: 0, dead: false, base: colHex };
+  return boss;
+}
+function removeBoss() { if (boss) { scene.remove(boss.group); boss = null; } }
+
+/* ================= パーティクル ================= */
+const PN = 1400, pPos = new Float32Array(PN * 3), pCol = new Float32Array(PN * 3), pVel = new Float32Array(PN * 3), pLife = new Float32Array(PN);
+const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3)); pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
+const pPts = new THREE.Points(pGeo, new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+pPts.frustumCulled = false; scene.add(pPts); let pHead = 0;
+function burst(x, y, z, hex, n, spd, up) {
+  const c = new THREE.Color(hex);
+  for (let i = 0; i < n; i++) {
+    const k = pHead = (pHead + 1) % PN, a = Math.random() * 6.283, b = Math.random() * 2 - 1, s = spd * (0.3 + Math.random());
+    pPos.set([x, y, z], k * 3); pVel.set([Math.cos(a) * Math.sqrt(1 - b * b) * s, b * s * 0.8 + (up || 0), Math.sin(a) * Math.sqrt(1 - b * b) * s], k * 3);
+    const j = 0.75 + Math.random() * 0.5; pCol.set([c.r * j, c.g * j, c.b * j], k * 3); pLife[k] = 0.7 + Math.random() * 0.9;
+  }
+}
+function updateParticles(dt) {
+  for (let i = 0; i < PN; i++) {
+    if (pLife[i] <= 0) { pPos[i * 3 + 1] = -999; continue; }
+    pLife[i] -= dt; pVel[i * 3 + 1] -= 9 * dt;
+    pPos[i * 3] += pVel[i * 3] * dt; pPos[i * 3 + 1] += pVel[i * 3 + 1] * dt; pPos[i * 3 + 2] += pVel[i * 3 + 2] * dt;
+    if (pPos[i * 3 + 1] < 0.05) { pPos[i * 3 + 1] = 0.05; pVel[i * 3 + 1] *= -0.4; }
+  }
+  pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
+}
+/* 流れる速度線 */
+const SL = 90, slGeo = new THREE.BufferGeometry(), slPos = new Float32Array(SL * 6);
+slGeo.setAttribute('position', new THREE.BufferAttribute(slPos, 3));
+const speedLines = new THREE.LineSegments(slGeo, new THREE.LineBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.0, fog: false })); speedLines.frustumCulled = false; scene.add(speedLines);
+const slSeed = Array.from({ length: SL }, () => ({ x: (Math.random() - 0.5) * 30, y: Math.random() * 14, o: Math.random() * 60 }));
+function updateSpeedLines(zc, amt) {
+  speedLines.material.opacity = amt;
+  for (let i = 0; i < SL; i++) { const s = slSeed[i], z = zc - 70 + ((s.o + zc * 0.0) % 60) + ((-zc % 60 + 60) % 60) * 0 ; const zz = zc - 4 - ((((s.o - zc) % 70) + 70) % 70); slPos.set([s.x + crowd.x * 0.6, s.y, zz, s.x + crowd.x * 0.6, s.y, zz - 5 - amt * 14], i * 6); }
+  slGeo.attributes.position.needsUpdate = true;
+}
+/* カメラ・リサイズ */
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h;
+  camera.userData.portrait = h > w; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+/* ================= サウンド ================= */
+let AC = null, muted = false;
+function ensureAudio() { try { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); } catch (e) { } }
+function beep(f, d, type, g, slide, delay) {
+  if (!AC || muted) return; try {
+    const t0 = AC.currentTime + (delay || 0), o = AC.createOscillator(), a = AC.createGain();
+    o.type = type || 'square'; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f * slide), t0 + d);
+    a.gain.setValueAtTime(g || 0.06, t0); a.gain.exponentialRampToValueAtTime(0.0001, t0 + d); o.connect(a); a.connect(AC.destination); o.start(t0); o.stop(t0 + d + 0.02);
+  } catch (e) { }
+}
+const sfx = {
+  good() { [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.16, 'square', 0.05, 1, i * 0.055)); },
+  bad() { beep(260, 0.35, 'sawtooth', 0.07, 0.4); beep(180, 0.4, 'sawtooth', 0.05, 0.5, 0.06); },
+  neutral() { beep(440, 0.1, 'triangle', 0.05); },
+  hit() { beep(110, 0.18, 'square', 0.08, 0.5); beep(660 + Math.random() * 200, 0.07, 'square', 0.03); },
+  boom() { beep(90, 0.9, 'sawtooth', 0.12, 0.2); beep(60, 1.1, 'square', 0.09, 0.3); },
+  win() { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => beep(f, 0.22, 'square', 0.06, 1, i * 0.08)); },
+  tick() { beep(880, 0.06, 'square', 0.03); }
+};
+
+/* ================= ゲーム状態 ================= */
+const RELICS = {
+  time: { ic: '⏳', name: '時の砂', ds: '制限時間 +8 秒' },
+  eye: { ic: '👁', name: '鑑定の眼', ds: 'ゲートの良し悪しが ▲▼ で見える' },
+  shield: { ic: '🛡', name: '守護の盾', ds: '悪いゲートを毎フロア1回だけ無効化' },
+  slow: { ic: '🪶', name: '減速の羽', ds: '基本速度 -15% (考える時間が増える)' },
+  boost: { ic: '✨', name: '黄金の翼', ds: 'ボスの必要威力 -10%' }
+};
+const BOSS_FN = ['Ackermann A(x, x)', 'Busy Beaver Σ(x)', 'TREE(x)', 'Rayo(x)'];
+const BOSS_DET = ['特異行列の王', 'ヒルベルト巨像', 'ジョルダンの竜', 'ユニタリの化身'];
+const BOSS_COL = [0xff3f9b, 0x9b6bff, 0xff7a1a, 0x2fc7ff];
+const GS = {
+  phase: 'menu', mode: 'fn', size: 2, floor: 0, relics: {}, st: null, gates: [], gi: 0, timer: 0, timerMax: 1,
+  bossSr: 5, bossZ: -400, shield: 0, sprint: false, targetX: 0, keyL: false, keyR: false, t: 0, bt: 0, readyT: 0, power: 0, shake: 0, fovK: 0, hpEnd: 0, bossName: '', winFlag: false, popped: false
+};
+const relicCount = k => GS.relics[k] || 0;
+const bestKey = () => 'orderrush-best-' + GS.mode + (GS.mode === 'det' ? GS.size : '');
+function loadBest() { try { return +localStorage.getItem(bestKey()) || 0; } catch (e) { return 0; } }
+function saveBest(v) { try { if (v > loadBest()) localStorage.setItem(bestKey(), String(v)); } catch (e) { } }
+const power = st => st.kind === 'fn' ? fnSr(st) : (st.det > 0n ? 1.6 : -1.6) * Math.max(0, log10Big(st.det));
+const crowdOf = st => { const sr = st.kind === 'fn' ? fnSr(st) : 1.6 * Math.max(0, log10Big(st.det)); return Math.max(8, Math.min(150, 8 + Math.floor(sr * 4.5))); };
+
+/* ================= HUD ================= */
+function popup(text, color) {
+  const d = document.createElement('div'); d.className = 'pop'; d.textContent = text; d.style.color = color; $('popups').appendChild(d); setTimeout(() => d.remove(), 1400);
+}
+function flash(color, a) { const f = $('flash'); f.style.background = color; f.animate([{ opacity: a }, { opacity: 0 }], { duration: 420, easing: 'ease-out' }); }
+function matShort(M) { return M.map(r => r.map(v => fmtBig(v)).join(' ')).join('  |  '); }
+function refreshHUD() {
+  const st = GS.st; $('modeTag').textContent = GS.mode === 'fn' ? '関数モード' : `行列式 ${GS.size}×${GS.size}`; $('floorTag').textContent = 'FLOOR ' + (GS.floor + 1);
+  $('relics').innerHTML = Object.keys(GS.relics).map(k => `<span class="chip relic" title="${RELICS[k].name}">${RELICS[k].ic}${GS.relics[k] > 1 ? '×' + GS.relics[k] : ''}</span>`).join('');
+  let expr, line;
+  if (st.kind === 'fn') { const s = showT(st.tree); expr = 'f(x) = ' + s; line = `f(10³⁰) ≈ <b>${fmtV(st.v)}</b>　威力 <b>${fnSr(st).toFixed(1)}</b>`; $('cursorChip').textContent = s.length > 34 ? s.slice(0, 33) + '…' : s; }
+  else { expr = 'det M = ' + fmtBig(st.det); line = `M = <b>${matShort(st.M)}</b>`; $('cursorChip').textContent = 'det = ' + fmtBig(st.det); }
+  $('exprLine').textContent = expr.length > 90 ? expr.slice(0, 89) + '…' : expr; $('orderLine').innerHTML = line;
+  const neg = st.kind === 'det' && st.det < 0n; setCrowdColor(neg ? 0xb44dff : st.kind === 'fn' ? 0xc6ff3d : 0xffa63d);
+  $('cursorChip').style.color = neg ? '#d9a6ff' : ''; $('cursorChip').style.borderColor = neg ? '#b44dff' : '';
+  crowd.target = crowdOf(st); startGraph(st);
+}
+function updateTimerHUD() {
+  const t = Math.max(0, GS.timer); $('timerNum').textContent = t.toFixed(1); $('timerNum').classList.toggle('low', t < 8 && GS.phase === 'run');
+  $('timerBar').firstElementChild.style.width = (100 * t / GS.timerMax) + '%'; $('gateTag').textContent = `GATE ${Math.min(GS.gi + 1, GS.gates.length)} / ${GS.gates.length}`;
+}
+function updateCrowdTag() {
+  const v = new THREE.Vector3(crowd.x, 3.4, crowd.z).project(camera), tag = $('crowdTag');
+  tag.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px'; tag.style.top = ((-v.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+  const neg = GS.st && GS.st.kind === 'det' && GS.st.det < 0n; tag.style.color = neg ? '#d9a6ff' : GS.mode === 'fn' ? '#c6ff3d' : '#ffa63d';
+  tag.innerHTML = Math.round(crowd.n) + '<small>人</small>'; tag.style.display = v.z < 1 ? '' : 'none';
+}
+
+/* ================= グラフ ================= */
+const gc = $('graph'), gx = gc.getContext('2d'); const GW = 360, GH = 200;
+let gAnim = { t: 1, from: null, to: null, kind: '' };
+function fnCurve(tree) {
+  const N = 120, ys = []; let mx = 1;
+  for (let i = 0; i < N; i++) { const x = 0.2 + (7 - 0.2) * i / (N - 1); let v; try { v = evalN(tree, x); } catch (e) { v = NaN; } const y = isFinite(v) ? Math.log10(1 + Math.abs(v)) : Infinity; ys.push(y); if (isFinite(y)) mx = Math.max(mx, y); }
+  return { ys: ys.map(y => isFinite(y) ? y : mx * 1.2), mx: Math.min(mx, 300) };
+}
+function detShape(st) {
+  const n = st.n, col = j => st.M.map(r => Number(r[j])), pts = [];
+  if (n === 2) { const [a, c] = col(0), [b, d] = col(1); return { n, v: [[0, 0], [a, c], [a + b, c + d], [b, d]] }; }
+  const cs = [col(0), col(1), col(2)];
+  for (let m = 0; m < 8; m++) { let x = 0, y = 0, z = 0; for (let j = 0; j < 3; j++) if (m >> j & 1) { x += cs[j][0]; y += cs[j][1]; z += cs[j][2]; } pts.push([x + z * 0.55, y + z * 0.4]); }
+  return { n, v: pts };
+}
+function startGraph(st) {
+  const prev = gAnim.cur || null;
+  if (st.kind === 'fn') { const to = fnCurve(st.tree); $('gpT1').textContent = 'y = log₁₀(1 + f(x))'; $('gpT2').textContent = 'x: 0.2 → 7'; gAnim = { t: 0, kind: 'fn', from: prev && prev.kind === 'fn' ? prev.ys : to.ys.map(() => 0), to: to.ys, mx: to.mx, fromMx: prev && prev.kind === 'fn' ? prev.mx : 1, cur: null }; }
+  else { const to = detShape(st); $('gpT1').textContent = `M の列ベクトルが張る図形`; $('gpT2').textContent = '面積/体積 = |det|'; gAnim = { t: 0, kind: 'det', from: prev && prev.kind === 'det' && prev.v.length === to.v.length ? prev.v : to.v.map(() => [0, 0]), to: to.v, neg: st.det < 0n, n: to.n, cur: null }; }
+}
+function drawGraph(dt) {
+  if (!gAnim.to) return; if (gAnim.t >= 1 && gAnim.drawn) return;
+  gAnim.t = Math.min(1, gAnim.t + dt * 2.2); const p = 1 - Math.pow(1 - gAnim.t, 3); gx.clearRect(0, 0, GW, GH);
+  gx.strokeStyle = 'rgba(140,120,255,.18)'; gx.lineWidth = 1; for (let i = 1; i < 8; i++) { gx.beginPath(); gx.moveTo(i * GW / 8, 0); gx.lineTo(i * GW / 8, GH); gx.stroke(); } for (let j = 1; j < 5; j++) { gx.beginPath(); gx.moveTo(0, j * GH / 5); gx.lineTo(GW, j * GH / 5); gx.stroke(); }
+  if (gAnim.kind === 'fn') {
+    const ys = gAnim.to.map((y, i) => gAnim.from[i] + (y - gAnim.from[i]) * p), mx = gAnim.fromMx + (gAnim.mx - gAnim.fromMx) * p, top = Math.max(mx, 1) * 1.08;
+    gAnim.cur = { kind: 'fn', ys, mx };
+    gx.fillStyle = '#7a72b8'; gx.font = '10px JetBrains Mono, monospace'; gx.fillText('10^' + top.toFixed(top > 20 ? 0 : 1), 4, 12);
+    gx.beginPath(); ys.forEach((y, i) => { const X = 6 + (GW - 12) * i / (ys.length - 1), Y = GH - 6 - (GH - 18) * y / top; i ? gx.lineTo(X, Y) : gx.moveTo(X, Y); });
+    gx.lineJoin = 'round'; gx.lineWidth = 6; gx.strokeStyle = 'rgba(198,255,61,.22)'; gx.stroke(); gx.lineWidth = 2.5; gx.strokeStyle = '#c6ff3d'; gx.shadowColor = '#c6ff3d'; gx.shadowBlur = 10; gx.stroke(); gx.shadowBlur = 0;
+  } else {
+    const v = gAnim.to.map((q, i) => [gAnim.from[i][0] + (q[0] - gAnim.from[i][0]) * p, gAnim.from[i][1] + (q[1] - gAnim.from[i][1]) * p]); gAnim.cur = { kind: 'det', v };
+    let x0 = 0, x1 = 1, y0 = 0, y1 = 1; v.forEach(q => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); });
+    const sc = Math.min((GW - 30) / (x1 - x0 || 1), (GH - 30) / (y1 - y0 || 1)), ox = (GW - sc * (x1 - x0)) / 2 - sc * x0, oy = (GH + sc * (y1 - y0)) / 2 + sc * y0, P = q => [ox + sc * q[0], oy - sc * q[1]];
+    const col = gAnim.neg ? '#b44dff' : '#ffa63d';
+    gx.strokeStyle = 'rgba(255,255,255,.35)'; gx.setLineDash([3, 3]); gx.strokeRect(P([0, 0])[0], P([0, 1])[1], sc, sc); gx.setLineDash([]);
+    gx.fillStyle = col + '55'; gx.strokeStyle = col; gx.lineWidth = 2.5; gx.shadowColor = col; gx.shadowBlur = 10; gx.lineJoin = 'round';
+    if (gAnim.n === 2) { gx.beginPath(); v.forEach((q, i) => { const [a, b] = P(q); i ? gx.lineTo(a, b) : gx.moveTo(a, b); }); gx.closePath(); gx.fill(); gx.stroke(); }
+    else { gx.beginPath(); [0, 1, 3, 2].forEach((m, i) => { const [a, b] = P(v[m]); i ? gx.lineTo(a, b) : gx.moveTo(a, b); }); gx.closePath(); gx.fill(); for (let m = 0; m < 8; m++) for (let b = 0; b < 3; b++) if (!(m >> b & 1)) { const A = P(v[m]), B = P(v[m | 1 << b]); gx.beginPath(); gx.moveTo(A[0], A[1]); gx.lineTo(B[0], B[1]); gx.stroke(); } }
+    gx.shadowBlur = 0; gx.fillStyle = '#fff'; const o = P([0, 0]); gx.beginPath(); gx.arc(o[0], o[1], 3, 0, 7); gx.fill();
+  }
+  if (gAnim.t >= 1) gAnim.drawn = true;
+}
+
+/* ================= フロア構築 ================= */
+function startFloor() {
+  const f = GS.floor, det = GS.mode === 'det', hard = det && GS.size === 3;
+  const n = Math.min(7 + f, 11), spacing = (hard ? 54 : 46) - f * 2, base = (hard ? 9 : 11) + f * 0.7;
+  GS.baseSpeed = base * (1 - 0.15 * relicCount('slow')); GS.spacing = spacing;
+  clearGates(); GS.gates = []; GS.gi = 0;
+  const pairs = []; for (let i = 0; i < n; i++) pairs.push(det ? detGatePair(GS.size, f) : fnGatePair(f));
+  const z0 = 70; pairs.forEach((p, i) => { const g = spawnGate(-(z0 + i * spacing), p, det ? 'det' : 'fn'); g.eyeDone = false; GS.gates.push(g); });
+  GS.bossZ = -(z0 + n * spacing + 80); buildTrack(-GS.bossZ);
+  const best = det ? bestDetSr(pairs, GS.st.det) : bestFnSr(pairs, GS.st);
+  const ratio = Math.min(0.9, 0.7 + 0.05 * f) * (1 - 0.1 * relicCount('boost'));
+  GS.bossSr = Math.max(best * ratio, power(GS.st) + 2.5, 3);
+  GS.bossName = (det ? BOSS_DET : BOSS_FN)[f % 4]; buildBoss(GS.bossZ, GS.bossName, BOSS_COL[f % 4]);
+  GS.timerMax = ((-GS.bossZ - 55) / GS.baseSpeed) * 0.78 + 8 * relicCount('time'); GS.timer = GS.timerMax;
+  GS.shield = relicCount('shield'); crowd.x = 0; crowd.z = 0; GS.targetX = 0; GS.phase = 'ready'; GS.readyT = 1.5; GS.winFlag = false;
+  $('bossBar').hidden = true; $('hud').hidden = false; $('overlay').hidden = true; $('cursorChip').hidden = false; refreshHUD(); updateTimerHUD();
+  popup('FLOOR ' + (f + 1), '#ffd23f'); sfx.neutral();
+}
+function startRun(mode, size) {
+  ensureAudio(); GS.mode = mode; GS.size = size; GS.floor = 0; GS.relics = {}; GS.st = mode === 'fn' ? fnStart() : detStart(size); GS.popped = false;
+  crowd.n = 8; gAnim = { t: 1, from: null, to: null, kind: '' }; startFloor();
+}
+
+/* ================= ゲート通過 ================= */
+function previewGates() {
+  const g = GS.gates[GS.gi]; if (!g || g.eyeDone || relicCount('eye') < 1) return; g.eyeDone = true;
+  g.pair.forEach((gate, i) => { const nx = gate.kind === 'fn' ? fnApply(GS.st, gate) : detApply(GS.st, gate); const d = power(nx) - power(GS.st); setEye(g.sides[i], d > 0.03 ? '▲' : d < -0.03 ? '▼' : '＝'); });
+}
+function passGate(g) {
+  const side = crowd.x < 0 ? 0 : 1, gate = g.pair[side], old = GS.st; let nx = gate.kind === 'fn' ? fnApply(old, gate) : detApply(old, gate);
+  let d = power(nx) - power(old), guarded = false;
+  if (d < -0.03 && GS.shield > 0) { GS.shield--; nx = old; guarded = true; }
+  g.done = true; GS.st = nx; const px = crowd.x, pz = g.z, col = side === 0 ? 0xff3f9b : 0x2fc7ff;
+  const label = gate.kind === 'fn' ? gate.l.replace(/\s+/g, '') : 'det ' + fmtBig(gate.d);
+  burst(px, 4, pz, col, 70, 9, 4); g.sides[side].panel.visible = false; g.sides[side ^ 1].mat.opacity = 0.25;
+  const flipped = nx.kind === 'det' && ((old.det < 0n) !== (nx.det < 0n)) && !guarded;
+  if (guarded) { popup('🛡 ガード！', '#9b6bff'); flash('#9b6bff', .3); sfx.neutral(); }
+  else if (flipped) { const neg = nx.det < 0n; popup(neg ? '反転！ ' + label : '復活！ ' + label, neg ? '#d9a6ff' : '#ffd23f'); flash(neg ? '#b44dff' : '#ffd23f', .4); neg ? sfx.bad() : sfx.good(); GS.shake = neg ? 0.8 : 0.3; burst(px, 3, pz, neg ? 0xb44dff : 0xffd23f, 120, 12, 5); }
+  else if (d > 0.03) { popup(label + '  ▲', '#7dff6b'); flash('#7dff6b', .25 + Math.min(.3, d / 20)); sfx.good(); burst(px, 3, pz, 0xc6ff3d, 90 + Math.min(120, d * 12), 12, 5); GS.fovK = 1; }
+  else if (d < -0.03) { popup(label + '  ▼', '#ff4a4a'); flash('#ff4a4a', .35); sfx.bad(); GS.shake = 0.9; burst(px, 2, pz, 0xff4a4a, 90, 10, 3); }
+  else { popup(label + '  ＝', '#ffd23f'); sfx.neutral(); }
+  GS.gi++; refreshHUD(); updateTimerHUD();
+}
+
+/* ================= ボス戦 ================= */
+function beginBoss(timeUp) {
+  GS.phase = 'boss'; GS.bt = 0; GS.endDone = false; GS.power = power(GS.st); const need = GS.bossSr;
+  GS.winFlag = GS.power >= need; GS.hpEnd = GS.winFlag ? 0 : Math.max(0.12, 1 - Math.pow(Math.max(0, GS.power) / need, 1.5) * 0.9);
+  $('bossBar').hidden = false; $('bossName').textContent = 'BOSS: ' + GS.bossName; $('bossHp').style.width = '100%';
+  $('bossNeed').textContent = GS.mode === 'fn' ? `必要威力 ${need.toFixed(1)}　あなた ${GS.power.toFixed(1)}` : `必要: det ≥ 10^${(need / 1.6).toFixed(1)}　あなた: ${fmtBig(GS.st.det)}`;
+  if (timeUp) { popup('TIME UP', '#ff4a4a'); flash('#ff4a4a', .5); sfx.bad(); } else { popup('BOSS!!', '#ff3f9b'); sfx.boom(); }
+  GS.bossFromZ = crowd.z; GS.bossFromX = crowd.x; GS.shake = 1;
+}
+function updateBoss(dt) {
+  GS.bt += dt; const t = GS.bt, B = boss; B.core.rotation.y += dt * 0.8; B.core.rotation.x += dt * 0.4; B.spikes.rotation.y -= dt * 0.5; B.spikes.rotation.z += dt * 0.3; B.ring1.rotation.x += dt * 1.1; B.ring2.rotation.y += dt * 1.6;
+  const tz = GS.bossZ + 19;
+  if (t < 1.4) { const k = Math.min(1, t / 1.4), e = k * k * (3 - 2 * k); crowd.z = GS.bossFromZ + (tz - GS.bossFromZ) * e; crowd.x = GS.bossFromX * (1 - e); crowd.speedK = 1.4; }
+  else if (t < 4.2) {
+    crowd.z = tz; crowd.x *= 0.9; const k = (t - 1.4) / 2.8, e = 1 - Math.pow(1 - k, 2); GS.moving = true;
+    $('bossHp').style.width = (100 * (1 - (1 - GS.hpEnd) * e)) + '%'; B.group.position.z = GS.bossZ + Math.sin(t * 40) * 0.25 * (1 - k * 0.3);
+    if (Math.random() < dt * 30) { burst((Math.random() - 0.5) * 8, 4 + Math.random() * 10, GS.bossZ + 6, Math.random() < .5 ? 0xffd23f : 0xff3f9b, 22, 9, 3); sfx.hit(); }
+    const sx = (Math.random() - 0.5) * 0.4; B.core.position.x = sx; B.core.scale.setScalar(1 + Math.sin(t * 30) * 0.03);
+    if (!GS.winFlag) crowd.target = Math.max(8, crowdOf(GS.st) * (1 - 0.8 * k) | 0);
+  } else if (GS.phase === 'boss' && !GS.endDone) {
+    GS.endDone = true; GS.endT = 0; B.core.position.x = 0; B.core.scale.setScalar(1);
+    if (GS.winFlag) { popup('BOSS DOWN!', '#ffd23f'); flash('#ffffff', .85); sfx.boom(); sfx.win(); GS.shake = 1.4; for (let i = 0; i < 12; i++) burst((Math.random() - 0.5) * 14, 4 + Math.random() * 12, GS.bossZ + Math.random() * 6, [0xffd23f, 0xff3f9b, 0x2fc7ff, 0xc6ff3d][i % 4], 90, 16, 8); B.dead = true; $('bossHp').style.width = '0%'; }
+    else { popup('敗北…', '#ff4a4a'); sfx.bad(); flash('#ff4a4a', .6); crowd.target = 0; burst(crowd.x, 3, crowd.z, 0xff4a4a, 160, 12, 5); }
+  }
+  if (GS.endDone) {
+    GS.endT += dt; if (B.dead) { B.group.scale.multiplyScalar(1 - dt * 1.6); B.group.rotation.y += dt * 9; if (Math.random() < dt * 40) burst((Math.random() - .5) * 10, 8, GS.bossZ + 4, 0xffd23f, 25, 14, 6); }
+    if (GS.endT > 2.0 && GS.phase === 'boss') { GS.phase = 'between'; GS.winFlag ? showRelics() : showOver(); }
+  }
+}
+
+/* ================= オーバーレイ ================= */
+function overlay(html) { const o = $('overlay'); o.innerHTML = '<div class="card">' + html + '</div>'; o.hidden = false; $('cursorChip').hidden = true; }
+function showRelics() {
+  GS.floor++; saveBest(GS.floor); const keys = Object.keys(RELICS).sort(() => Math.random() - 0.5).slice(0, 3);
+  overlay(`<h2 class="big">FLOOR ${GS.floor} CLEAR!</h2><p class="sub">遺物をひとつ選んで次のフロアへ（遺物は重ねがけできる）</p><div class="relics">${keys.map(k => `<button class="relicbtn" data-k="${k}" type="button"><span class="ic">${RELICS[k].ic}</span><b>${RELICS[k].name}</b><span>${RELICS[k].ds}</span></button>`).join('')}</div>`);
+  $('overlay').querySelectorAll('.relicbtn').forEach(b => b.addEventListener('click', () => { const k = b.dataset.k; GS.relics[k] = (GS.relics[k] || 0) + 1; GS.endDone = false; boss && removeBoss(); startFloor(); }));
+}
+function showOver() {
+  saveBest(GS.floor); const st = GS.st, v = st.kind === 'fn' ? 'f(x) = ' + showT(st.tree) : 'det = ' + fmtBig(st.det);
+  overlay(`<h2 class="big" style="color:var(--red)">GAME OVER</h2><p class="sub">フロア ${GS.floor + 1} のボス「${GS.bossName}」に敗れた</p><div class="stat">${v.length > 120 ? v.slice(0, 119) + '…' : v}</div><div class="stat">到達: ${GS.floor} フロア制覇　ベスト: ${loadBest()}</div><button class="btn" id="again" type="button">もう一度</button><button class="seg" id="toMenu" type="button">モード選択へ</button>`);
+  $('again').onclick = () => { GS.endDone = false; startRun(GS.mode, GS.size); }; $('toMenu').onclick = () => toMenu();
+}
+function toMenu() { GS.phase = 'menu'; GS.endDone = false; $('hud').hidden = true; clearGates(); removeBoss(); buildTrack(300); crowd.n = 24; crowd.x = 0; crowd.z = 0; setCrowdColor(0xc6ff3d); drawMenu(); }
+function drawMenu() {
+  const o = $('overlay'); o.innerHTML = ''; o.appendChild(document.getElementById('startTpl').content.cloneNode(true)); o.hidden = false; $('cursorChip').hidden = true; bindMenu();
+}
+function bindMenu() {
+  const sync = () => { $('sz2').setAttribute('aria-pressed', GS.size === 2); $('sz3').setAttribute('aria-pressed', GS.size === 3); };
+  $('sz2').onclick = () => { GS.size = 2; sync(); showBest(); }; $('sz3').onclick = () => { GS.size = 3; sync(); showBest(); }; sync();
+  const showBest = () => { const k = GS.mode; const f = (m, s) => { try { return +localStorage.getItem('orderrush-best-' + m + (m === 'det' ? s : '')) || 0; } catch (e) { return 0; } }; $('bestLine').textContent = `ベスト（制覇フロア）　関数 ${f('fn')}　行列式2×2 ${f('det', 2)}　3×3 ${f('det', 3)}`; };
+  showBest(); $('goFn').onclick = () => startRun('fn', GS.size); $('goDet').onclick = () => startRun('det', GS.size);
+}
+
+/* ================= 入力 ================= */
+const clampX = x => Math.max(-(HALF - 1.6), Math.min(HALF - 1.6, x));
+function setPointerX(cx) { GS.targetX = clampX(((cx / window.innerWidth) * 2 - 1) * (HALF - 1.4) * 1.25); }
+window.addEventListener('pointermove', e => { const c = $('cursorChip'); c.style.transform = `translate(${e.clientX + 14}px,${e.clientY + 14}px)`; if (GS.phase === 'run' || GS.phase === 'ready') setPointerX(e.clientX); });
+window.addEventListener('pointerdown', e => { ensureAudio(); if (GS.phase === 'run' || GS.phase === 'ready') { setPointerX(e.clientX); if (e.pointerType === 'mouse' && e.target === glCanvas) GS.sprintMouse = true; } });
+window.addEventListener('pointerup', () => { GS.sprintMouse = false; });
+const spb = $('sprint'); spb.addEventListener('pointerdown', e => { e.stopPropagation(); GS.sprintBtn = true; spb.classList.add('on'); ensureAudio(); }); ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => spb.addEventListener(ev, () => { GS.sprintBtn = false; spb.classList.remove('on'); }));
+window.addEventListener('keydown', e => { if (e.code === 'ArrowLeft' || e.code === 'KeyA') GS.keyL = true; if (e.code === 'ArrowRight' || e.code === 'KeyD') GS.keyR = true; if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') { GS.sprintKey = true; e.preventDefault(); } if (e.code === 'KeyM') muted = !muted; });
+window.addEventListener('keyup', e => { if (e.code === 'ArrowLeft' || e.code === 'KeyA') GS.keyL = false; if (e.code === 'ArrowRight' || e.code === 'KeyD') GS.keyR = false; if (e.code === 'Space' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') GS.sprintKey = false; });
+window.addEventListener('blur', () => { GS.keyL = GS.keyR = GS.sprintKey = GS.sprintMouse = false; });
+
+/* ================= メインループ ================= */
+let last = performance.now(), camPos = new THREE.Vector3(0, 9, 14), camLook = new THREE.Vector3(0, 1, -20), lastTick = 0;
+function frame(now) {
+  requestAnimationFrame(frame); const dt = Math.min(0.05, (now - last) / 1000); last = now; GS.t += dt; tick(dt, GS.t);
+}
+function tick(dt, t) {
+  let moving = false, sprint = false;
+  if (GS.phase === 'ready') { GS.readyT -= dt; if (GS.readyT <= 0) { GS.phase = 'run'; popup('GO!', '#c6ff3d'); sfx.good(); } }
+  if (GS.phase === 'run' || GS.phase === 'ready') {
+    if (GS.keyL) GS.targetX = clampX(GS.targetX - 16 * dt); if (GS.keyR) GS.targetX = clampX(GS.targetX + 16 * dt);
+    crowd.x += (GS.targetX - crowd.x) * Math.min(1, dt * 9);
+  }
+  if (GS.phase === 'run') {
+    sprint = GS.sprintBtn || GS.sprintKey || GS.sprintMouse; const sp = GS.baseSpeed * (sprint ? 1.75 : 1); crowd.z -= sp * dt; moving = true; crowd.speedK = sprint ? 1.5 : 1;
+    GS.timer -= dt; updateTimerHUD(); previewGates();
+    const g = GS.gates[GS.gi]; if (g && crowd.z <= g.z) passGate(g);
+    if (GS.gi >= GS.gates.length && crowd.z <= GS.bossZ + 48) beginBoss(false);
+    else if (GS.timer <= 0) { GS.gi = GS.gates.length; beginBoss(true); }
+    if (GS.timer < 8 && Math.floor(GS.timer) !== Math.floor(GS.timer + dt)) sfx.tick();
+  } else if (GS.phase === 'ready') { crowd.z = 0; moving = false; }
+  else if (GS.phase === 'boss') { updateBoss(dt); moving = GS.bt < 1.4 || GS.bt < 4.2; }
+  else if (GS.phase === 'menu') { moving = true; crowd.speedK = 0.6; }
+  crowd.n += (crowd.target - crowd.n) * Math.min(1, dt * 6);
+  updateCrowd(dt, t, moving && GS.phase !== 'between');
+  // カメラ
+  GS.shake = Math.max(0, GS.shake - dt * 2.2); GS.fovK = Math.max(0, GS.fovK - dt * 2.5);
+  let cp, cl; const port = camera.userData.portrait, up = port ? 3 : 0, back = port ? 6 : 0;
+  if (GS.phase === 'boss' || GS.phase === 'between') { cp = new THREE.Vector3(0, 13 + up, GS.bossZ + 46 + back); cl = new THREE.Vector3(0, 8, GS.bossZ); }
+  else if (GS.phase === 'menu') { const a = t * 0.3; cp = new THREE.Vector3(Math.sin(a) * 14, 6, Math.cos(a) * 14); cl = new THREE.Vector3(0, 2, 0); }
+  else { cp = new THREE.Vector3(crowd.x * 0.5, 9 + up + (sprint ? 0.8 : 0), crowd.z + 14.5 + back); cl = new THREE.Vector3(crowd.x * 0.55, 1.4, crowd.z - 22); }
+  camPos.lerp(cp, Math.min(1, dt * 4)); camLook.lerp(cl, Math.min(1, dt * 5));
+  camera.position.copy(camPos); if (GS.shake > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * GS.shake * 0.8, (Math.random() - 0.5) * GS.shake * 0.8, 0)); camera.lookAt(camLook);
+  const fovT = 62 + (sprint ? 10 : 0) + GS.fovK * 8 + (port ? 10 : 0); camera.fov += (fovT - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix();
+  // 演出
+  gateObjs.forEach(o => { if (!o.done) o.sides.forEach((s, i) => { s.panel.position.y = 4.6 + Math.sin(t * 2 + o.z + i) * 0.12; }); });
+  const hue = (t * 0.1) % 1; sideMats.forEach((m, i) => m.color.setHSL((hue + i * 0.5) % 1, 0.9, 0.6));
+  const stars = scene.getObjectByName('stars'); if (stars) stars.rotation.y = t * 0.01;
+  updateParticles(dt); updateSpeedLines(crowd.z, sprint ? 0.55 : GS.phase === 'run' ? 0.18 : 0);
+  if (GS.phase !== 'menu') { updateCrowdTag(); } else $('crowdTag').style.display = 'none';
+  drawGraph(dt); renderer.render(scene, camera);
+}
+/* 起動 */
+(function init() {
+  const tpl = document.createElement('template'); tpl.id = 'startTpl'; tpl.innerHTML = $('overlay').innerHTML; document.body.appendChild(tpl);
+  crowd.n = 24; crowd.target = 24; toMenu(); requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
